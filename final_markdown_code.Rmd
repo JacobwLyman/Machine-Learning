@@ -1,430 +1,274 @@
 ---
-title: "Post-Experiment Analysis for Your Test"
-author: "Your Name"
-date: "`r format(Sys.time(), '%Y %B %d')`"
+title: "Final Project"
+author: "Jacob Lyman"
+date: "April 1, 2019"
 output:
   html_document:
-    code_folding: hide
-    highlight: tango
-    number_sections: yes
+    pdf_document: null
     theme: lumen
-    css: ps_style.css
     toc: yes
     toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
 ---
-
-```{r, echo=FALSE}
-htmltools::img(src = knitr::image_uri("PS_logo_F-01.png"), 
-               alt = 'logo', 
-               align = 'right',
-               style = 'position:relative; top:-70px; right:30px; 
-               padding:10px; width:250px; float:right;')
+```{r include = FALSE}
+setwd("C:/Users/Jacob/Desktop/My Projects/Data Analytics")
 ```
 
-```{r global_option, message=FALSE, warning=FALSE, include=FALSE}
-options(scipen=999)
-knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
-library(seekr)
-library(tidyverse)
-library(knitr)
-library(kableExtra)
-library(data.table)
+```{r figurename, fig.align='center', echo=FALSE, out.width = '90%'}
+knitr::include_graphics("data.png")
 ```
 
-I load all of the course data from the `salesforce.opportunity` table.
-```{r message=FALSE, warning=FALSE, include=FALSE}
-#Load data from database
-data <- ImpalaQuery("SELECT 
-name
-, library_course_id__c
-, s3_handle__c
-, course_commissioned_date__c
-, published_date__c
-, royalty_rate__c
-, completion_payment_amount__c
-, opportunity_owner_full_name__c
-, partnership_type__c
-FROM salesforce_prod_content.opportunity
-WHERE library_course_id__c !='' --if course name is blank then probably a guide
-AND course_id__c NOT LIKE '%cancelled%'
-ORDER BY course_commissioned_date__c DESC, published_date__c
-")
+```{r include=FALSE, out.width = '15%'}
+knitr::include_graphics("images.png")
 ```
 
-From there, I filter by `course_commissioned_date__c` and `published_date__c` to determine the production numbers for the given month of interest.
-```{r message=FALSE, warning=FALSE, include=FALSE}
-#Separate Published Courses
-published_data <- data %>%
-  dplyr::filter(published_date__c %like% '2019-10'
-                , s3_handle__c != 'michael-teske'
-                , s3_handle__c != 'tim-warner'
-                , s3_handle__c != 'michael-bender') ####Important Input####
+# **The Project Underway**
 
-#Separate Commissioned Courses
-commissioned_data <- data %>%
-  dplyr::filter(course_commissioned_date__c %like% '2019-10'
-                , s3_handle__c != 'michael-teske'
-                , s3_handle__c != 'tim-warner'
-                , s3_handle__c != 'michael-bender') ####Important Input####
+Recommending the right questions for a programmer to solve is a big challenge for online education platforms. Nevertheless, this is essential to keep users engaged. 
+
+Recommended questions should be ones that are within the skill level of a respective user. The question that this project will address is "For a given programmer, how much time will they take to solve a given problem?" To answer this question, I will build a model to make such predictions based on a programmer's historical platform interactions, their background, and the characteristics of a given problem. 
+
+Knowing the expected time for a solution will provide insight as to which level of questions should be recommended to a user. The product of this project will serve as the basis for a recommendation engine, which will address a broader question of "What question(s) should be recommended to a programmer to keep them engaged?"
+
+```{r include=FALSE, message= FALSE, warning=FALSE}
+library(data.table) 
+library(dplyr) 
+library(caret) 
+library(csv) 
+library(knitr) 
+library(kableExtra) 
+library(treemap)
+library(plyr)
 ```
 
-#Monthly performance Review 
-
-How many courses were commissioned?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-commissioned_count <- nrow(commissioned_data)
-commissioned_count
+```{r include=FALSE}
+historyData <- fread("train_submissions.csv")
+userData <- fread("user_data.csv")
+problemData <- fread("problem_data.csv")
 ```
 
-What was the average rate?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-commissioned_avg_rate <- mean(commissioned_data$royalty_rate__c, na.rm = TRUE)
-commissioned_avg_rate
+# **Exploratory Data Analysis**
+
+For this project we have access to three data tables: Historical Data (`historyData`), Problem Data (`problemData`), and User Data (`userData`). 
+
+Historical Data dimensions:
+```{r echo=FALSE}
+dim(historyData)
 ```
 
-What was the average completion payment?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-commissioned_avg_payout <- mean(commissioned_data$completion_payment_amount__c, na.rm = TRUE)
-commissioned_avg_payout
+Problem Data dimensions:
+```{r echo=FALSE}
+dim(problemData)
 ```
 
-Of the courses that were commissioned, what percent was made up of Offer 2?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-lower_rates <- commissioned_data %>%
-  filter(royalty_rate__c <= .06)
-lower_rates <- lower_rates %>%
-  filter(opportunity_owner_full_name__c != "Sean Lowery"
-         , opportunity_owner_full_name__c != "Pat Lavelle")
-round(nrow(lower_rates)/nrow(commissioned_data),3)
+User Data dimensions:
+```{r echo=FALSE}
+dim(userData)
 ```
 
-How many unique authors accepted Offer 2?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-length(unique(lower_rates$s3_handle__c))
+We'll take an indepth look at each data table separately.
+
+## Historical Data
+
+```{r echo=FALSE}
+str(historyData)
 ```
 
-#The following chart represents a break down of who is taking the higher option:
-```{r message=FALSE, warning=FALSE, include=FALSE}
-course_library <- ImpalaQuery("SELECT *
-  FROM product_sandbox.course_library_with_tags a
-LEFT JOIN
-(SELECT library_course_id__c, s3_handle__c
-  FROM salesforce_prod_content.opportunity) b
-ON a.course_name = b.library_course_id__c")
-
-course_library <- course_library %>% 
-  group_by(s3_handle__c) %>% 
-  tally()
-
-lower_rates <- merge(x = lower_rates, y = course_library, by = 's3_handle__c', all.x = TRUE)
-write.csv(lower_rates, "lower_rates.csv")
-
-lower_rates <- lower_rates %>%
-  select(s3_handle__c, n)
-
-lower_rates <- lower_rates %>%
-  distinct(s3_handle__c, n)
-
-thisTable <- lower_rates %>%
-  group_by(n) %>%
-  tally()
-
-thisTable$n <- as.numeric(thisTable$n)
-thisTable$nn <- as.numeric(thisTable$nn)
-
-thisTable$nnn <- thisTable$nn/thisTable$n
-```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(thisTable, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover"))  ##The n column is courses_published, while nnn is how many authros fit within each bucket
-```
-```{r message=FALSE, warning=FALSE, include=FALSE}
-# #Percentage: How many authors were commissioned total for each bucket?
-# length(unique(commissioned_data$s3_handle__c))
-# percentage <- merge(commissioned_data, course_library, by = 's3_handle__c', all.x = TRUE)
-# 
-# percentage <- percentage[,-c(2:7)]
-# 
-# percentage <- unique(percentage)
-# 
-# # percentage <- percentage %>%
-# #   filter(distinct(s3_handle__c))
-# 
-# thisTable2 <- percentage %>%
-#   group_by(n) %>%
-#   tally()
-# 
-# thisTable2$n <- as.numeric(thisTable2$n)
-# thisTable2$nn <- as.numeric(thisTable2$nn)
-# 
-# thisTable2$nnn <- thisTable2$nn/thisTable2$n
-# View(thisTable2)
-# 
-# sum(thisTable2$nnn)
-```
-
-How many courses were published?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-published_count <- nrow(published_data)
-published_count
-```
-
-What was the average rate?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-published_avg_rate <- mean(published_data$royalty_rate__c, na.rm = TRUE)
-published_avg_rate
-```
-
-What was the average completion payment?
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-published_avg_payout <- mean(published_data$completion_payment_amount__c, na.rm = TRUE)
-published_avg_payout
-```
-
-# How are we trending over time?
-```{r message=FALSE, warning=FALSE, include=FALSE}
-plot_data <- data %>%
-  filter(course_commissioned_date__c != '') 
-```
-
-### Courses Commissioned MoM 
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  group_by(course_commissioned_date__c) %>%
-  summarise(total = n()) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(course_commissioned_date__c)) %>%
-  filter(month > 100) %>%
-  ggplot() +
-  geom_line(aes(course_commissioned_date__c,total,group=1)) 
-```
-
-### Avg. Commissioned Rate MoM
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  group_by(course_commissioned_date__c) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE)) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(course_commissioned_date__c)) %>%
-  filter(month > 100) %>%
-  ggplot() +
-  geom_line(aes(course_commissioned_date__c,total,group=1))
-```
-
-### Course Published MoM
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  group_by(published_date__c) %>%
-  summarise(total = n()) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(published_date__c)) %>%
-  filter(month > 100) %>%
-  ggplot() +
-  geom_line(aes(published_date__c,total,group=1))
-```
-
-
-### Avg. Published Rate MoM
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  group_by(published_date__c) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE)) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(published_date__c)) %>%
-  filter(month > 100) %>%
-  ggplot() +
-  geom_line(aes(published_date__c,total,group=1))
-```
-
-# How are we trending over time (Omitting conference ingestion)
-```{r message=FALSE, warning=FALSE, include=FALSE}
-plot_data <- plot_data %>%
-  filter(partnership_type__c != 'PS Ingestion'
-         ,partnership_type__c != 'PS Creation')
-```
-
-### Courses Commissioned MoM 
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table1 <- plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  group_by(course_commissioned_date__c) %>%
-  summarise(total = n()) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(course_commissioned_date__c)) %>%
-  filter(month > 100)
-```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table1, align = "c") %>%
+```{r echo=FALSE}
+kable(historyData[1:50,], align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
   scroll_box(height = "200px")
 ```
+*NOTE: This table only includes the first 50 observations.
 
+The `historyData` is our largest data table. It includes 155,295 observations of brief interactive data between various programmers and online problems, specifically recording the total attempts (`attempst_range`) that a given programmer took to solve a respective problem.
 
-### Avg. Commissioned Rate MoM
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table2 <- plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  group_by(course_commissioned_date__c) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE)) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(course_commissioned_date__c)) %>%
-  filter(month > 100)
+The primary variable of interest, and our upcoming dependent variable for our predictions, is `attempts_range`. 
+```{r echo = FALSE}
+attempts <- aggregate(data.frame(count = historyData$attempts_range), list(attempt_range = historyData$attempts_range), length)
+x2 <- c("1-1", "2-3", "4-5", "6-7", "8-9", ">=10" )
+attempts<- data.frame(attempts,x2)
+names(attempts) <- c("attempts_range", "count", "# of attempts")
+kable(attempts[,c(1,3,2)],
+      align = "c") %>% kable_styling(bootstrap_options = c("striped", "hover"),full_width = F)
 ```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table2, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+
+Each level within `attempts_range` represents a bin for the number of attempts that a programmer took to solve a given problem in `historyData`. Later in this project, I will train a model to predict the expected `attempts_range`, between 1-6, for a given programmer to solve a given problem based on its charactersistics and the programmer's respective background. 
+
+How many unique programmers do we have in `historyData`?
+```{r include= TRUE}
+length(unique(historyData$user_id))
+```
+
+Interestingly enough, not all of the users within `userData` show up in the `historyData`. We have the background information for an additional 42 programmers to be exact. Nevertheless, this will not cause any issues within the scope of this project.
+
+How many times does each unique user show up in `historyData`?
+```{r echo=FALSE}
+userUnique <- aggregate(data.frame(count = historyData$user_id), list(user = historyData$user_id), length)
+kable(userUnique[1:100,], align = "c") %>% kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
   scroll_box(height = "200px")
 ```
+*NOTE: This table only includes the first 100 observations.
 
-
-### Course Published MoM
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table3 <- plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  group_by(published_date__c) %>%
-  summarise(total = n()) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(published_date__c)) %>%
-  filter(month > 100)
+```{r echo=FALSE}
+summary(userUnique$count)
 ```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table3, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  kable_styling() %>%
-  scroll_box(height = "200px")
-```
+On average, a programmer will have answered 44 problems and can be expected to be found in `historyData` around 44 times.
 
-
-### Avg. Published Rate MoM
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table4 <- plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  group_by(published_date__c) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE)) %>%
-  mutate(total = as.numeric(total)) %>%
-  mutate(month = 1:length(published_date__c)) %>%
-  filter(month > 100)
-```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table4, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  kable_styling() %>%
-  scroll_box(height = "200px")
-```
-
-
-### Avg. Commissioned Completion Payment
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table5 <- plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  group_by(course_commissioned_date__c)  %>%
-  summarise(total = mean(completion_payment_amount__c, na.rm = TRUE))
-```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table5, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  kable_styling() %>%
-  scroll_box(height = "200px")
-```
-
-
-### Avg. Published Completion Payment
-```{r message=FALSE, warning=FALSE, include=FALSE}
-table6 <- plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  group_by(published_date__c) %>%
-  summarise(total = mean(completion_payment_amount__c, na.rm = TRUE))
-```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(table6, align = "c") %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  kable_styling() %>%
-  scroll_box(height = "200px")
-```
-
-# QoQ Numbers
-
-### Courses Commissioned
+How many unique problems do we have in `historyData`?
 ```{r}
-
+length(unique(historyData$problem_id))
 ```
 
-### Avg. Commissioned Rate
-```{r message=FALSE, warning=FALSE, include=FALSE}
-rate_commissioned <- plot_data %>%
-  mutate(course_commissioned_date__c = as.Date(course_commissioned_date__c)) %>%
-  mutate(course_commissioned_date__c = cut(course_commissioned_date__c, breaks = "month")) %>%
-  mutate(quarter = lubridate::quarter(course_commissioned_date__c, with_year = TRUE)) %>%
-  group_by(quarter) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE))
+Similar to `userData`, the `historyData` doesn't include all of the problems that are in the `problemData`. We have information for an additional 768 problems to be exact. Nevertheless, this also won't cause any problems for the purposes of this project. 
+
+How many times does each unique problem show up in this table?
+```{r echo=FALSE}
+problemsUnique <- aggregate(data.frame(count = historyData$problem_id), list(problem = historyData$problem_id), length)
+kable(problemsUnique[1:100,],
+      align = "c") %>% kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kable_styling() %>%
+  scroll_box(height = "200px")
 ```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(rate_commissioned, align = "c") %>%
+*NOTE: This table only includes the first 100 observations.
+
+```{r echo=FALSE}
+summary(problemsUnique$count)
+```
+Looking at the above distribution, we can see that there is a large spread between the number of times a problem is answered by users. The most a problem was answered was 1,365 times. Perhaps this is one of the introductory problems of the online platform?
+
+Lastly, let's check to see if we have any NAs in `historyData`:
+```{r include = TRUE}
+dataNA <- apply(historyData, 1, function(x) sum(is.na(x)))
+sum(dataNA)
+```
+No, we do not.
+
+## Problem Data
+
+```{r echo = FALSE}
+str(problemData)
+```
+
+```{r echo=FALSE}
+kable(problemData[1:100], align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
   scroll_box(height = "200px")
 ```
+*NOTE: This table only includes the first 100 observations.
 
+The `problemData` includes a total of 6,544 different problems that can be given to a user. These problems vary in difficulty and genre.
 
-### Courses Published
+By viewing the above table, we can already tell that we have some NAs within the `problemData`. How many are there?
+```{r include = TRUE}
+problemNA <- apply(problemData, 1, function(x) sum(is.na(x)))
+sum(problemNA)
+```
+
+A lot. Which features contain NAs?
 ```{r}
-
+columnNAs <- colnames(problemData)[colSums(is.na(problemData)) > 0]
+columnNAs
 ```
 
-### Avg. Published Rate
-```{r message=FALSE, warning=FALSE, include=FALSE}
-rate_published <- plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  mutate(quarter = lubridate::quarter(published_date__c, with_year = TRUE)) %>%
-  group_by(quarter) %>%
-  summarise(total = mean(royalty_rate__c, na.rm = TRUE))
+It appears that the `points` feature is the only one that contains NAs. Naturally, `points` indicates the amount of points that a programmer can receive for solving a given problem. Though I don't know what these points might apply to, we can assume that users have an incentive to collect points to meet some sort of goal. There are only two explanations for there to be missing data in this feature: (1) Some problems offer points while others do not or (2) the data is missing due to data collection limitations. At this time, I don't know which of the two options is the most likely.
+
+Additionally, we can see that there is missing data in two other features, namely the `level_type` and `tags` features. The `level_type` indicates the difficulty level of a given problem, while the `tags` feature indicates any particular facets of a problem.
+
+```{r echo=FALSE}
+level <- aggregate(data.frame(count = problemData$level_type), list(level = problemData$level_type), length)
+kable(level, align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
 ```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(rate_published, align = "c") %>%
+
+While it's reasonable to assume that problems without a tag are simply generic, I'm unsure why certain problems are not assigned a specific level. However, it's obvious that there are fewer and fewer problems with each advancment in level. Perhaps the problems that currently do not have a `level_type` assigned are both the same level *and* belong in sequence with the other levels in the above table, ordered by count. The label for these problems might've been unintentionally ommitted.
+
+How many unique `tags` do we have in `problemData`?
+```{r include=TRUE}
+length(unique(problemData$tags))
+```
+```{r echo=FALSE}
+tags <- aggregate(data.frame(count = problemData$tags), list(tags = problemData$tags), length)
+
+kable(tags, align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
   scroll_box(height = "200px")
 ```
 
 
-### Avg. Completion Payment
-```{r message=FALSE, warning=FALSE, include=FALSE}
-avg_comp_pmt <- plot_data %>%
-  filter(published_date__c != '') %>%
-  mutate(published_date__c = as.Date(published_date__c)) %>%
-  mutate(published_date__c = cut(published_date__c, breaks = "month")) %>%
-  mutate(quarter = lubridate::quarter(published_date__c, with_year = TRUE)) %>%
-  group_by(quarter) %>%
-  summarise(total = mean(completion_payment_amount__c, na.rm = TRUE))
 
+That's actually super helpful to know. There are 883 unique tag combinations. Along with this, we can see that 3,484 problems don't have any tag whatsoever.
+
+## User Data
+
+```{r echo=FALSE}
+str(userData)
 ```
-```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
-kable(avg_comp_pmt, align = "c") %>%
+
+```{r echo=FALSE}
+kable(userData[1:50,], align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "200px")
+```
+*NOTE: This table only includes the first 50 observations.
+
+Last, but not least, the `userData` contains the most features out of our three data tables, but also the least amount of observations: `userData` includes 3,571 observations and 11 features. These data contain information about each programmer, their background, and their experience.
+
+Do we have any NAs in `userData`?
+```{r include= TRUE}
+userNA <- apply(userData, 1, function(x) sum(is.na(x)))
+sum(userNA)
+```
+
+Nope! Nevertheless, we most definitely have missing data in `userData`. Just from a brief look at the above table, we can tell that we don't have the country information for every user.
+
+How many unique countries do we have present in `userData`?
+```{r echo=FALSE}
+length(unique(userData$country))
+```
+
+```{r echo=FALSE}
+countries <- aggregate(data.frame(count = userData$country), list(value = userData$country), length)
+
+kable(countries[order(-countries$count),], align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
   scroll_box(height = "200px")
 ```
+```{r fig.align='center', echo=FALSE}
+treemap(countries[2:80,],index = c("value"),vSize ="count", title = "User Density by Country")
+```
 
+There are 79 unique countries within `userData`, along with an additional factor level for the programmers who do not have a recorded country.
+
+What is the experience of the programmers in `userData`?
+```{r echo = FALSE}
+rank <- aggregate(data.frame(count = userData$rank), list(level = userData$rank), length)
+rank <- rank[c(2,4,1,3),]
+kable(rank, align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r fig.align='center', echo=FALSE}
+H <- userData$rank
+counts <- table(H)
+barplot(counts[c(2,4,1,3)])
+```
+
+The bulk of our programmers lie within the beginner and intermediate levels.
+
+# **Future Steps**
+
+The first step of this project was an exploratory data analysis. Subsequent steps will involve the following:
+
+1) Feature Engineering
+2) Model Training
+3) Final Testing and Assessment

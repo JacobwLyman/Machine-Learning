@@ -4,13 +4,9 @@ author: "Jacob Lyman"
 date: "April 1, 2019"
 output:
   html_document:
-    pdf_document: null
     theme: lumen
-    toc: yes
-    toc_float: yes
-  pdf_document:
-    toc: yes
-  word_document:
+    toc_float: true 
+    pdf_document:
     toc: yes
 ---
 ```{r include = FALSE}
@@ -19,10 +15,6 @@ setwd("C:/Users/Jacob/Desktop/My Projects/Data Analytics")
 
 ```{r figurename, fig.align='center', echo=FALSE, out.width = '90%'}
 knitr::include_graphics("data.png")
-```
-
-```{r include=FALSE, out.width = '15%'}
-knitr::include_graphics("images.png")
 ```
 
 # **The Project Underway**
@@ -34,14 +26,30 @@ Recommended questions should be ones that are within the skill level of a respec
 Knowing the expected time for a solution will provide insight as to which level of questions should be recommended to a user. The product of this project will serve as the basis for a recommendation engine, which will address a broader question of "What question(s) should be recommended to a programmer to keep them engaged?"
 
 ```{r include=FALSE, message= FALSE, warning=FALSE}
-library(data.table) 
+# install.packages("data.table")
+# install.packages("plyr")
+# install.packages("dplyr")
+# install.packages("caret")
+# install.packages("csv")
+# install.packages("knitr")
+# install.packages("kableExtra")
+# install.packages("treemap")
+# install.packages("randomForest")
+# install.packages("mlbench")
+# install.packages("neuralnet")
+library(data.table) # I need this so that I can use fread()
+library(plyr) #to revalue factor levels
 library(dplyr) 
-library(caret) 
-library(csv) 
-library(knitr) 
-library(kableExtra) 
+library(caret) # I need this so I can use creatDataPartition()
+library(csv) # I need this to write out my data files
+library(knitr) # So that I can make tables
+library(kableExtra) #so that I can format my tables
 library(treemap)
-library(plyr)
+library(randomForest)
+library(mlbench)
+library(reshape2)
+library(ggplot2)
+library(neuralnet)
 ```
 
 ```{r include=FALSE}
@@ -84,9 +92,7 @@ kable(historyData[1:50,], align = "c") %>%
   scroll_box(height = "200px")
 ```
 *NOTE: This table only includes the first 50 observations.
-
 The `historyData` is our largest data table. It includes 155,295 observations of brief interactive data between various programmers and online problems, specifically recording the total attempts (`attempst_range`) that a given programmer took to solve a respective problem.
-
 The primary variable of interest, and our upcoming dependent variable for our predictions, is `attempts_range`. 
 ```{r echo = FALSE}
 attempts <- aggregate(data.frame(count = historyData$attempts_range), list(attempt_range = historyData$attempts_range), length)
@@ -96,16 +102,12 @@ names(attempts) <- c("attempts_range", "count", "# of attempts")
 kable(attempts[,c(1,3,2)],
       align = "c") %>% kable_styling(bootstrap_options = c("striped", "hover"),full_width = F)
 ```
-
 Each level within `attempts_range` represents a bin for the number of attempts that a programmer took to solve a given problem in `historyData`. Later in this project, I will train a model to predict the expected `attempts_range`, between 1-6, for a given programmer to solve a given problem based on its charactersistics and the programmer's respective background. 
-
 How many unique programmers do we have in `historyData`?
 ```{r include= TRUE}
 length(unique(historyData$user_id))
 ```
-
 Interestingly enough, not all of the users within `userData` show up in the `historyData`. We have the background information for an additional 42 programmers to be exact. Nevertheless, this will not cause any issues within the scope of this project.
-
 How many times does each unique user show up in `historyData`?
 ```{r echo=FALSE}
 userUnique <- aggregate(data.frame(count = historyData$user_id), list(user = historyData$user_id), length)
@@ -114,19 +116,15 @@ kable(userUnique[1:100,], align = "c") %>% kable_styling(bootstrap_options = c("
   scroll_box(height = "200px")
 ```
 *NOTE: This table only includes the first 100 observations.
-
 ```{r echo=FALSE}
 summary(userUnique$count)
 ```
 On average, a programmer will have answered 44 problems and can be expected to be found in `historyData` around 44 times.
-
 How many unique problems do we have in `historyData`?
 ```{r}
 length(unique(historyData$problem_id))
 ```
-
 Similar to `userData`, the `historyData` doesn't include all of the problems that are in the `problemData`. We have information for an additional 768 problems to be exact. Nevertheless, this also won't cause any problems for the purposes of this project. 
-
 How many times does each unique problem show up in this table?
 ```{r echo=FALSE}
 problemsUnique <- aggregate(data.frame(count = historyData$problem_id), list(problem = historyData$problem_id), length)
@@ -136,25 +134,20 @@ kable(problemsUnique[1:100,],
   scroll_box(height = "200px")
 ```
 *NOTE: This table only includes the first 100 observations.
-
 ```{r echo=FALSE}
 summary(problemsUnique$count)
 ```
 Looking at the above distribution, we can see that there is a large spread between the number of times a problem is answered by users. The most a problem was answered was 1,365 times. Perhaps this is one of the introductory problems of the online platform?
-
 Lastly, let's check to see if we have any NAs in `historyData`:
 ```{r include = TRUE}
 dataNA <- apply(historyData, 1, function(x) sum(is.na(x)))
 sum(dataNA)
 ```
 No, we do not.
-
 ## Problem Data
-
 ```{r echo = FALSE}
 str(problemData)
 ```
-
 ```{r echo=FALSE}
 kable(problemData[1:100], align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
@@ -162,31 +155,24 @@ kable(problemData[1:100], align = "c") %>%
   scroll_box(height = "200px")
 ```
 *NOTE: This table only includes the first 100 observations.
-
 The `problemData` includes a total of 6,544 different problems that can be given to a user. These problems vary in difficulty and genre.
-
 By viewing the above table, we can already tell that we have some NAs within the `problemData`. How many are there?
 ```{r include = TRUE}
 problemNA <- apply(problemData, 1, function(x) sum(is.na(x)))
 sum(problemNA)
 ```
-
 A lot. Which features contain NAs?
 ```{r}
 columnNAs <- colnames(problemData)[colSums(is.na(problemData)) > 0]
 columnNAs
 ```
-
 It appears that the `points` feature is the only one that contains NAs. Naturally, `points` indicates the amount of points that a programmer can receive for solving a given problem. Though I don't know what these points might apply to, we can assume that users have an incentive to collect points to meet some sort of goal. There are only two explanations for there to be missing data in this feature: (1) Some problems offer points while others do not or (2) the data is missing due to data collection limitations. At this time, I don't know which of the two options is the most likely.
-
 Additionally, we can see that there is missing data in two other features, namely the `level_type` and `tags` features. The `level_type` indicates the difficulty level of a given problem, while the `tags` feature indicates any particular facets of a problem.
-
 ```{r echo=FALSE}
 level <- aggregate(data.frame(count = problemData$level_type), list(level = problemData$level_type), length)
 kable(level, align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
-
 While it's reasonable to assume that problems without a tag are simply generic, I'm unsure why certain problems are not assigned a specific level. However, it's obvious that there are fewer and fewer problems with each advancment in level. Perhaps the problems that currently do not have a `level_type` assigned are both the same level *and* belong in sequence with the other levels in the above table, ordered by count. The label for these problems might've been unintentionally ommitted.
 
 How many unique `tags` do we have in `problemData`?
@@ -195,7 +181,6 @@ length(unique(problemData$tags))
 ```
 ```{r echo=FALSE}
 tags <- aggregate(data.frame(count = problemData$tags), list(tags = problemData$tags), length)
-
 kable(tags, align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
@@ -219,25 +204,19 @@ kable(userData[1:50,], align = "c") %>%
   scroll_box(width = "100%", height = "200px")
 ```
 *NOTE: This table only includes the first 50 observations.
-
 Last, but not least, the `userData` contains the most features out of our three data tables, but also the least amount of observations: `userData` includes 3,571 observations and 11 features. These data contain information about each programmer, their background, and their experience.
-
 Do we have any NAs in `userData`?
 ```{r include= TRUE}
 userNA <- apply(userData, 1, function(x) sum(is.na(x)))
 sum(userNA)
 ```
-
 Nope! Nevertheless, we most definitely have missing data in `userData`. Just from a brief look at the above table, we can tell that we don't have the country information for every user.
-
 How many unique countries do we have present in `userData`?
 ```{r echo=FALSE}
 length(unique(userData$country))
 ```
-
 ```{r echo=FALSE}
-countries <- aggregate(data.frame(count = userData$country), list(value = userData$country), length)
-
+countries <- aggregate(data.frame(count = userData$country), list(value = userData$country), length) 
 kable(countries[order(-countries$count),], align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   kable_styling() %>%
@@ -246,9 +225,7 @@ kable(countries[order(-countries$count),], align = "c") %>%
 ```{r fig.align='center', echo=FALSE}
 treemap(countries[2:80,],index = c("value"),vSize ="count", title = "User Density by Country")
 ```
-
 There are 79 unique countries within `userData`, along with an additional factor level for the programmers who do not have a recorded country.
-
 What is the experience of the programmers in `userData`?
 ```{r echo = FALSE}
 rank <- aggregate(data.frame(count = userData$rank), list(level = userData$rank), length)
@@ -256,19 +233,573 @@ rank <- rank[c(2,4,1,3),]
 kable(rank, align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
-
 ```{r fig.align='center', echo=FALSE}
 H <- userData$rank
 counts <- table(H)
-barplot(counts[c(2,4,1,3)])
+pal <- colorRampPalette(colors = c("lightblue", "red"))(3)
+barplot(counts[c(2,4,1,3)], col = pal)
+```
+The bulk of our programmers lie within the beginner and intermediate levels.
+# **Data Preparation**
+
+Now that we have explored our data, it's time to prepare them for model training and testing. To start things off, we will first join all three of the data tables into one big set. After joining the data, we will perfrom some feature engineering and then will split the data into training data and test data.
+
+Let's join our data sets:
+```{r include = TRUE}
+data <- join(historyData, userData, by = "user_id", type = "inner", match = "all")
+data <- join(data, problemData, by = "problem_id", type = "inner", match = "all")
 ```
 
-The bulk of our programmers lie within the beginner and intermediate levels.
+```{r echo=FALSE}
+kable(data[1:50,], align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "200px")
+```
+*NOTE: This table only includes the first 50 observations.
+## Feature Engineering
+There are additional features that can be extracted from the data.
+```{r include=FALSE}
+#Feature engineering
+## 1.
+data$bin_points <- 0
+data$bin_points <- replace(data$bin_points, data$points=="NA", 0)
+data$bin_points <- replace(data$bin_points, data$points <=100, 1)
+data$bin_points <- replace(data$bin_points, data$points > 100 & data$points <= 250, 2)
+data$bin_points <- replace(data$bin_points, data$points > 250 & data$points <= 500, 3)
+data$bin_points <- replace(data$bin_points, data$points > 500 & data$points <= 750, 4)
+data$bin_points <- replace(data$bin_points, data$points > 750 & data$points <= 1000, 5)
+data$bin_points <- replace(data$bin_points, data$points > 1000 & data$points <= 1500, 6)
+data$bin_points <- replace(data$bin_points, data$points > 1500 & data$points <= 2000, 7)
+data$bin_points <- replace(data$bin_points, data$points > 2000 & data$points <= 2500, 8)
+data$bin_points <- replace(data$bin_points, data$points > 2500 & data$points <= 3000, 9)
+data$bin_points <- replace(data$bin_points, data$points > 3000 & data$points <= 3500, 10)
+data$bin_points <- replace(data$bin_points, data$points >3500 & data$points <= 4000, 11)
+data$bin_points <- replace(data$bin_points, data$points > 4000 & data$points <= 4500, 12)
+data$bin_points <- replace(data$bin_points, data$points > 4500 & data$points <= 5000, 13)
+data$bin_points <- as.factor(data$bin_points)
+## 2.
+data$weeks_registered <- data$last_online_time_seconds - data$registration_time_seconds
+data$weeks_registered <- data$weeks_registered/604800
+## 3.
+data$activity <- data$weeks_registered/data$problem_solved
+## 4.
+data$attempts_range <- as.numeric(data$attempts_range)
+data$user_id <- as.factor(data$user_id)
+avg_attempts2 <- data %>%
+  dplyr::group_by(user_id) %>%
+  summarise(avg_attempts = mean(attempts_range))
+data <- join(data, avg_attempts2, by = "user_id", type = "inner", match = "all")
+min_attempts2 <- data %>%
+  dplyr::group_by(user_id) %>%
+  summarise(min_attempts = min(attempts_range))
+data <- join(data, min_attempts2, by = "user_id", type = "inner", match = "all")
+max_attempts2 <- data %>%
+  dplyr::group_by(user_id) %>%
+  summarise(max_attempts = max(attempts_range))
+data <- join(data, max_attempts2, by = "user_id", type = "inner", match = "all")
+## 5.
+data$avg_submissions <- data$submission_count/data$problem_solved
+## 6.
+data$region <- 0
+data$region <- replace(data$region, data$country == "Egypt" | data$country =="Lebanon" | data$country == "Morocco" | data$country == "South Africa" | data$country == "Swaziland" | data$country == "Tunisia", "Africa")
+data$region <- replace(data$region, data$country == "Belarus" | data$country =="Bosnia and Herzegovina" | data$country == "Bulgaria" | data$country == "Croatia" | data$country == "Czechia" | data$country == "Estonia" | data$country =="Hungary" | data$country == "Latvia" | data$country == "Lithuania" | data$country == "Macedonia" | data$country == "Moldova" | data$country == "Poland" | data$country == "Russia" | data$country =="Serbia" | data$country == "Slovakia" | data$country == "Ukraine", "East Europe")
+data$region <- replace(data$region, data$country == "Austria" | data$country =="Belgium" | data$country == "Finland" | data$country == "France" | data$country == "Germany" | data$country == "Iceland" | data$country =="Italy" | data$country == "Netherlands" | data$country == "Norway" | data$country == "Spain" | data$country == "Switzerland" | data$country == "United Kingdom", "West Europe")
+data$region <- replace(data$region, data$country == "Romania" | data$country =="Armenia" | data$country == "Azerbaijan" | data$country == "Georgia" | data$country == "Iran" | data$country == "Israel" | data$country =="Jordan" | data$country == "Syria" | data$country == "Turkmenistan" | data$country == "Uzbekistan", "Middle East")
+data$region <- replace(data$region, data$country == "Bangladesh" | data$country =="China" | data$country == "Hong Kong" | data$country == "India" | data$country == "Indonesia" | data$country == "Japan" | data$country =="Kazakhstan" | data$country == "Kyrgyzstan" | data$country == "Laos" | data$country == "Malaysia" | data$country == "Mongolia" | data$country =="North Korea" | data$country == "Philippines" | data$country == "Singapore" | data$country == "South Korea" | data$country == "Taiwan" | data$country == "Tajikistan" | data$country == "Thailand" | data$country == "Vietnam", "Asia")
+data$region <- replace(data$region, data$country == "Australia" | data$country =="Canada" | data$country == "Christmas Island" | data$country == "Cuba" | data$country == "Haiti" | data$country == "Trinidad and Tobago", "Other")
+data$region <- replace(data$region, data$country == "Argentina" | data$country =="Bolivia" | data$country == "Brazil" | data$country == "Chile" | data$country == "Colombia" | data$country == "Costa Rica" | data$country =="Mexico" | data$country == "Peru" | data$country == "Venezuela", "South America")
+data$region <- replace(data$region, data$country == "United States", "United States")
+data$country <- mapvalues(data$country, from = "", to = "Unknown")
+data$region <- replace(data$region, data$country =="Unknown","Unknown")
+data$region <- as.factor(data$region)
+## 7.
+# data$AB <- 0
+# a <- unique(stack(setNames(strsplit(as.character(data$tags),','), data$AB)))
+# 
+# data$strings <- ifelse(grepl("strings", data$tags, ignore.case = T), 1,0)
+# data$brute_force <- ifelse(grepl("brute force", data$tags, ignore.case = T), 1,0)
+# data$dp <- ifelse(grepl("dp", data$tags, ignore.case = T), 1,0)
+# data$implementation <- ifelse(grepl("implementation", data$tags, ignore.case = T), 1,0)
+# data$dfs_and_similar <- ifelse(grepl("dfs and similar", data$tags, ignore.case = T), 1,0)
+# data$trees <- ifelse(grepl("trees", data$tags, ignore.case = T), 1,0)
+# data$string_suffix_structures <- ifelse(grepl("string suffix structures", data$tags, ignore.case = T), 1,0)
+# data$greedy <- ifelse(grepl("greedy", data$tags, ignore.case = T), 1,0)
+# data$sortings <- ifelse(grepl("sortings", data$tags, ignore.case = T), 1,0)
+# data$data_structures <- ifelse(grepl("data structures", data$tags, ignore.case = T), 1,0)
+# data$constructive_algorithms <- ifelse(grepl("constructive algorithms", data$tags, ignore.case = T), 1,0)
+# data$combinatorics <- ifelse(grepl("combinatorics", data$tags, ignore.case = T), 1,0)
+# data$dsu <- ifelse(grepl("dsu", data$tags, ignore.case = T), 1,0)
+# data$graphs <- ifelse(grepl("graphs", data$tags, ignore.case = T), 1,0)
+# data$flows <- ifelse(grepl("flows", data$tags, ignore.case = T), 1,0)
+# data$math <- ifelse(grepl("math", data$tags, ignore.case = T), 1,0)
+# data$number_theory <- ifelse(grepl("number theory", data$tags, ignore.case = T), 1,0)
+# data$bitmasks <- ifelse(grepl("bitmasks", data$tags, ignore.case = T), 1,0)
+# data$binary_search <- ifelse(grepl("binary search", data$tags, ignore.case = T), 1,0)
+# data$two_pointers <- ifelse(grepl("two pointers", data$tags, ignore.case = T), 1,0)
+# data$shortest_paths <- ifelse(grepl("shortest paths", data$tags, ignore.case = T), 1,0)
+# data$geometry <- ifelse(grepl("geometry", data$tags, ignore.case = T), 1,0)
+# data$divide_and_conquer <- ifelse(grepl("divide and conquer", data$tags, ignore.case = T), 1,0)
+# data$fft <- ifelse(grepl("fft", data$tags, ignore.case = T), 1,0)
+# data$chinese_remainder_theorem <- ifelse(grepl("chinese remainder theorem", data$tags, ignore.case = T), 1,0)
+# data$special  <- ifelse(grepl("*special", data$tags, ignore.case = T), 1,0)
+# data$ternary_search <- ifelse(grepl("ternary search", data$tags, ignore.case = T), 1,0)
+# data$graph_matching <- ifelse(grepl("graph matching", data$tags, ignore.case = T), 1,0)
+# data$games <- ifelse(grepl("games", data$tags, ignore.case = T), 1,0)
+# data$hashing <- ifelse(grepl("hashing", data$tags, ignore.case = T), 1,0)
+# data$probabilities <- ifelse(grepl("probabilities", data$tags, ignore.case = T), 1,0)
+# data$matrices <- ifelse(grepl("matrices", data$tags, ignore.case = T), 1,0)
+# data$expression_parsing <- ifelse(grepl("expression parsing", data$tags, ignore.case = T), 1,0)
+# data$schedules <- ifelse(grepl("schedules", data$tags, ignore.case = T), 1,0)
+# data$meet_in_the_middle <- ifelse(grepl("meet-in-the-middle", data$tags, ignore.case = T), 1,0)
+# data$sat <- ifelse(grepl("2-sat", data$tags, ignore.case = T), 1,0)
+# 
+# data$strings <- as.factor(data$strings)
+# data$brute_force <- as.factor(data$brute_force)
+# data$dp <- as.factor(data$dp)
+# data$implementation <- as.factor(data$implementation)
+# data$dfs_and_similar <- as.factor(data$dfs_and_similar)
+# data$trees <- as.factor(data$trees)
+# data$string_suffix_structures <- as.factor(data$string_suffix_structures)
+# data$greedy <- as.factor(data$greedy)
+# data$sortings <- as.factor(data$sortings)
+# data$data_structures <- as.factor(data$data_structures)
+# data$constructive_algorithms <- as.factor(data$constructive_algorithms)
+# data$combinatorics <- as.factor(data$combinatorics)
+# data$dsu <- as.factor(data$dsu)
+# data$graphs <- as.factor(data$graphs)
+# data$flows <- as.factor(data$flows)
+# data$math <- as.factor(data$math)
+# data$number_theory <- as.factor(data$number_theory)
+# data$bitmasks <- as.factor(data$bitmasks)
+# data$binary_search <- as.factor(data$binary_search)
+# data$two_pointers <- as.factor(data$two_pointers)
+# data$shortest_paths <- as.factor(data$shortest_paths)
+# data$geometry <- as.factor(data$geometry)
+# data$divide_and_conquer <- as.factor(data$divide_and_conquer)
+# data$fft <- as.factor(data$fft)
+# data$chinese_remainder_theorem <- as.factor(data$chinese_remainder_theorem)
+# data$special  <- as.factor(data$special)
+# data$ternary_search <- as.factor(data$ternary_search)
+# data$graph_matching <- as.factor(data$graph_matching)
+# data$games <- as.factor(data$games)
+# data$hashing <- as.factor(data$hashing)
+# data$probabilities <- as.factor(data$probabilities)
+# data$matrices <- as.factor(data$matrices)
+# data$expression_parsing <- as.factor(data$expression_parsing)
+# data$schedules <- as.factor(data$schedules)
+# data$meet_in_the_middle <- as.factor(data$meet_in_the_middle)
+# data$sat <- as.factor(data$sat)
+# 
+# data <- data[,-c("AB")]
+#Feature maniputlation
+## 1.
+data$attempts_range <- as.numeric(data$attempts_range)
+## 2.
+data$level_type <- as.factor(data$level_type)
+#levels(factor(data$level_type))
+data$level_type <- mapvalues(data$level_type, from = "", to = "X")
+## 3.
+data$rank <- as.factor(data$rank)
+## 4.
+data$tags <- as.factor(data$tags)
+```
+```{r echo=FALSE}
+str(data[,17:24])
+```
+```{r echo=FALSE}
+kable(data[1:50,17:24], align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "200px")
+```
+**The above table shows additional features that have been engineered and added to the data. Below is a list of explanations for each new variable:**
 
-# **Future Steps**
+* `bin_points`: Due to how dirty the data in the `points` feature is, I initially thought that I would drop the column entirely. Some problems don't offer any points at all, while others offer negative points (For example, we can see that prob_5031 offers -1 points). Dirty data is often worse than no data. Nevertheless, my feelings changed once I realized that there might be some value in the fact that the `points` feature can help distinguish between problems within the same level. For example, one problem within level "A" might offer 500 points, while another problem of the same level might offer 250 points. Perhaps there's a story here that we don't see? Perhaps the `points` feature is similar to bonus points, signifying something special about a particular problem? After realizing this, I decided that I would bin the `points` feature into particular ranges. For example, 0== NA, 1== `points`<=100, 2== `points` >100 & <=250, etc.
+* `weeks_registered`: The product of `registration_time_seconds` subtracted from `last_online_time_seconds` and then divided by the total seconds in a week. This is to find out how long a user has been on the platform.
+* `activity`: The product of `weeks_registered`divided by `problem_solved`. This will hopefully serve as a proxy for how active each user is on the platform.
+* `avg_attempts`/`min_attempts`/`max_attempts`: Features based on the `attempts_range` for each programmer.
+* `avg_submissions`: The product of `submission_count` divided by `problems_solved`. This is a similar variable to `avg_attempts`, but is perhaps more precise since the `attempts_range` consists of binned values, while `submission_count` is the total submissions of a user.
+* `region`: A tranformed factor variable of the `country` feature where observations have been assigned into respective regions: East Europe, West Europe, USA, South America, Middle East, Africa, Asia, Other, and Unknown. I anticipate that this will help with prospective sparsity issues for when we split up the data -- We have a few countries where there are only 1-3 users.
+* [Excluded] `tags` variables: I originally created dummy-variable features for each of the 35 unique strings within the `tags` feature. This was done to observe heterogeneous characteristics between problems. Nevertheless, I ultimately chose to exclude these features because of the great computational expense that they added to our upcoming models and feature selection methods.
 
-The first step of this project was an exploratory data analysis. Subsequent steps will involve the following:
+**The following is a list of additional feature manipulation:**
 
-1) Feature Engineering
-2) Model Training
-3) Final Testing and Assessment
+* `attempts_range` was converted into a numeric variable.
+* The unknown `level_type` was renamed as level "X". The variable was also classified as a factor.
+* `rank` was converted into a factor variable.
+
+```{r include=FALSE}
+##Features to be engineered from `problemData`:**
+# I could make four additional variables for the mean attempts that a given problem is solved for beginner, intermediate, advanced, and expert
+```
+
+## Split Data
+
+As with most data science projects, we need to split our data into training data and test data. The training data will be used throughout the rest of this project for model development, while the test data won't be used for anything other than the final tests of our trained models.
+
+Before we split our data, let's drop the features that we no longer need, namely `user_id`, `problem_id`, `country`, `last_online_time_seconds`, `registrations_time_seconds`, `points`, and `tags` (For now) . We will join test predictions to their respective `user_id` and `problem_id` later on.
+```{r include = TRUE}
+data <- subset(data, select= -c(user_id, problem_id, country,
+                last_online_time_seconds, registration_time_seconds, points, tags))
+```
+
+In order to avoid any systematic bias, we will split up the data at random:
+```{r include = TRUE}
+data$attempts_range <- as.numeric(data$attempts_range)
+randIndex <- sample(1:dim(data)[1])
+cutPoint2_3 <- floor(2*dim(data)[1]/3)
+train <- data[randIndex[1:cutPoint2_3],]
+test <- data[randIndex[(cutPoint2_3+1):dim(data)[1]],]
+```
+
+We'll also make sure that the `attempts_range` feature is removed from our test data.
+```{r include=TRUE}
+testNN <- test
+test.y<- test[,"attempts_range"]
+test <- test[,c(-1)]
+```
+
+
+# **Model Selection & Training**
+
+With our models, we will be making predictions between the `attempts_range` values of 1-6 for each observation. This is a regression problem and we will want to explore a variety of methods to tackle this. The methods that we will explore are Linear Regression, Random Forest, and Neural Network. With each model we will minimize the RSS and then round predictions to the closest digit (i.e., 1.7 -> 2, 4.1 -> 4, etc.).
+
+## Linear Regression
+
+For our baseline model, we are going to perform the Linear Regression model. To perform this function, we require very little effort.
+
+```{r include = TRUE, results='hide', warning=FALSE}
+lsModel <- train(attempts_range ~ ., 
+                 train,
+                 method = "lm", 
+                 trControl = trainControl(
+                   method = "cv", number = 5,
+                   verboseIter = TRUE
+                 ))
+```
+```{r include}
+lsModel
+```
+
+Great! Right off the bat, we have been able to fit a model to our training data that can predict `attempts_range` for observations with at least 70% accuracy. In the above lines of code, you can see that we applied 5-fold cross validation to this model. This helps to produce an accurate error estimate of how well this model might perform on previously unseen data (e.g., Test data).
+
+**Pros of Linear Regression**
+
+* Very easy to impliment
+* Computationally fast and inexpensive
+* High interpretability
+
+**Cons of Linear Regression**
+
+* Potentially weaker than other, more advanced methods
+
+## Feature Selection
+
+There is more that we can do to better tune this model and subsequent models: Feature Selection. The test error of a model will decrease and then begin to increase at some point as a model becomes more complex (e.g., Increase in the number of features). Because of this, we need to minimize the complexity of our model while optimizing its error rate. We do this by selecting the absolute best features we can. 
+
+An initial step for feature selection is to remove highly correlated features from our models.
+
+```{r include=FALSE}
+train$bin_points <- as.integer(train$bin_points)
+train$level_type <- as.integer(train$level_type)
+train$region <- as.integer(train$region)
+train$rank <- as.integer(train$rank)
+# calculate correlation matrix
+correlationMatrix <- cor(train[,2:17])
+# summarize the correlation matrix
+#print(correlationMatrix)
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+```
+
+```{r echo=FALSE, fig.align='center'}
+cormat <- round(cor(train[,1:17]),2)
+  get_lower_tri<-function(cormat){
+    cormat[upper.tri(cormat)] <- NA
+    return(cormat)
+  }
+  # Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+  
+upper_tri <- get_upper_tri(cormat)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
+ geom_tile(color = "white") + 
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Correlation") +
+  theme_minimal() + 
+  geom_tile() + 
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1),   axis.title.x = element_blank(),
+  axis.title.y = element_blank()) 
+```
+
+From the above image, along with some additional calculations, we can determine that the following features in our data have a high correlation and should  be removed from our models.
+
+```{r echo = FALSE}
+#We add 1 to each number because the original correlation matrix didn't include attempts_range
+colnames(train[,c(2,6,7,15)])
+```
+
+We can choose to eliminate the above variables from our models. However, there are other methods for feature selection that might be more useful. Another method is to run a model to rank the importance of each feature and only use the top choices:
+```{r include=FALSE, warning=FALSE}
+# ensure the results are repeatable
+set.seed(911)
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# train the model
+ftModel <- train(attempts_range~., data=train, method="lm", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(ftModel, scale=FALSE)
+# plot importance
+```
+
+```{r include=TRUE, fig.align='center'}
+plot(importance)
+```
+
+It's rather phenominal to see that `bin_points` is one of our most important variables. You might remember that I was originally planning on eliminating the `points` variable from which `bin_points` was derived. I'm glad I didn't!
+
+Lastly, we can use Recursive Feature Elimination to find the optimal combination of features that produces the best error score while minimizing the complexity of our model.
+```{r include=FALSE}
+train$bin_points <- as.factor(train$bin_points)
+train$level_type <- as.factor(train$level_type)
+train$region <- as.factor(train$region)
+train$rank <- as.factor(train$rank)
+# ensure the results are repeatable
+set.seed(911)
+```
+
+```{r include = TRUE, results='hide', warning=FALSE}
+control <- rfeControl(functions=rfFuncs, method="cv", number=5)
+results <- rfe(train[1:2000,2:17], as.matrix(train[1:2000,1]), sizes = c(1:16), rfeControl=control)
+```
+
+```{r echo=FALSE, fig.align='center'}
+# plot the results
+plot(results, type=c("g", "o"))
+```
+
+```{r include=FALSE}
+# summarize the results
+print(results)
+```
+
+The following list is the optimal combination of our features:
+```{r include=TRUE}
+predictors(results)
+```
+
+Now that we know which combinations of features gives us our estimated optimal error, let's run our Linear Regression model again.
+```{r include=FALSE}
+results2 <- predictors(results)
+f <- paste(results2, collapse = ' + ')
+f <- paste("attempts_range ~", f)
+f
+```
+
+```{r include = TRUE, results='hide',warning=FALSE}
+lsModel2 <- train(attempts_range ~ avg_attempts + problem_solved + submission_count + follower_count + weeks_registered + max_rating + bin_points + activity + rating + level_type, 
+                 train,
+                 method = "lm", 
+                 trControl = trainControl(
+                   method = "cv", number = 5,
+                   verboseIter = TRUE
+                 ))
+```
+```{r include=TRUE}
+lsModel2
+```
+
+There's a significant improvement!
+
+## Random Forest
+
+With Random Forest, we will need to find the optimal tuning parameters, just like with our Linear Regression model.
+```{r include=TRUE, results='hide'}
+rfModel <- train(attempts_range ~ avg_attempts + problem_solved + submission_count + follower_count + weeks_registered + max_rating + bin_points + activity + rating + level_type, 
+                 train[1:5000],
+                 method = "rf", 
+                 trControl = trainControl(
+                   method = "cv", number = 5,
+                   verboseIter = TRUE
+                 ))
+```
+```{r include=TRUE}
+rfModel
+```
+
+Now that we know mtry should be 2, let's bump up our sample size and run our model again.
+
+```{r include=TRUE}
+rfModel <- randomForest(attempts_range ~ avg_attempts + problem_solved + submission_count + follower_count + weeks_registered + max_rating + bin_points + activity + rating + level_type, data = train[1:50000,], mtry = 2, ntree = 100, importance = TRUE)
+      
+rfModel
+```
+
+**Pros of Random Forest**
+
+* Very dynamic and applicable in a number of settings
+* Usually very accurate without a lot of tuning
+
+**Cons of Random Forest**
+
+* Low interpretability
+* Computationally expensive
+
+## Neural Network
+
+Our final model, and hopefully our best option out of the three methods, will be the Neural Network.
+```{r include=FALSE}
+train$submission_count <- as.numeric(train$submission_count)
+train$problem_solved <- as.numeric(train$problem_solved)
+train$contribution  <- as.numeric(train$contribution)
+train$follower_count <- as.numeric(train$follower_count)
+```
+
+```{r include=TRUE}
+nndata <- train
+```
+
+```{r include=FALSE}
+nndata <- subset(nndata, select= -c(rank,level_type,region))
+nndata$bin_points <- as.numeric(nndata$bin_points)
+```
+
+In order to train a neural network model, we need to first scale our input data:
+```{r include=TRUE}
+maxs <- apply(nndata,2,max)
+mins <- apply(nndata,2,min)
+scaled.data <- as.data.frame(scale(nndata,center=mins,scale=maxs-mins))
+trainIndex <- createDataPartition(scaled.data$attempts_range, p = 0.75, list = FALSE)
+nn.train <- scaled.data[trainIndex,]
+nn.test <- scaled.data[-trainIndex,]
+```
+
+```{r include=FALSE}
+features <- colnames(scaled.data[,2:length(scaled.data)])
+f <- paste(features, collapse = ' + ')
+f <- paste("attempts_range ~", features)
+set.seed(911)
+```
+
+Let's train!
+```{r include = TRUE}
+nn <- neuralnet(f,data=nn.train[1:10000,],hidden=c(5,3),linear.output=T)
+```
+
+```{r include=FALSE, results='hide'}
+pr.nn <- compute(nn, nn.test[2:ncol(nn.test)])
+pr.nn2 <- pr.nn$net.result*(max(nndata$attempts_range)-min(nndata$attempts_range))+min(nndata$attempts_range)
+pr.nn2 <- round(pr.nn2)
+test.r <- (nn.test$attempts_range)*(max(nndata$attempts_range)-min(nndata$attempts_range))+min(nndata$attempts_range)
+MAE.nn <- mean(abs(test.r - pr.nn2))
+```
+
+How well does this neural network perform?
+```{r include=TRUE}
+print(MAE.nn)
+```
+
+Looks very promising!
+
+**Pros of Neural Network**
+
+* Very dynamic and applicable in a variety of settings
+* Usually very accurate
+
+**Cons of Neural Network**
+
+* Low interpretability
+* Computationally expensive
+
+# Final Testing
+
+We've come a long way throughout the course of this project. Now it's time to see the fruits of our labors: The final testing of our trained models. In order to save time, we will only test our Neural Network since it performed far better than our Linear Regression and Random Forest models. 
+
+**A note on evaluation:**
+For this project we will evaluate our models using the Mean Absolute Error between our predicted `attempts_range` and the observed `attempts_range`. See [Mean Absolute Error](https://en.wikipedia.org/wiki/Mean_absolute_error).
+
+```{r include=FALSE,eval=FALSE}
+#In case I want to test my Linear Regression
+ls.test.predictions <- predict(lsModel2,newdata=test)
+```
+
+```{r include=FALSE,eval=FALSE}
+ls.test.predictions <- round(ls.test.predictions)
+temp <- as.vector(test.y)
+temp <- temp$attempts_range
+```
+
+```{r include=FALSE,eval=FALSE}
+mean(abs(temp-ls.test.predictions))
+```
+
+```{r include= FALSE,eval=FALSE}
+#In case I want to test my Random Forest
+rf.test.predictions <- predict(rfModel,newdata=test)
+```
+
+```{r include=FALSE,eval=FALSE}
+rf.test.predictions <- round(rf.test.predictions)
+temp <- as.vector(test.y)
+temp <- temp$attempts_range
+```
+
+```{r include=FALSE,eval=FALSE}
+mean(abs(temp-rf.test.predictions))
+```
+
+## Neural Network
+
+Just like how we had to uniquely prepare the training data, we will have to do the same for our test data.
+```{r include=FALSE}
+testNN$submission_count <- as.numeric(testNN$submission_count)
+testNN$problem_solved <- as.numeric(testNN$problem_solved)
+testNN$contribution  <- as.numeric(testNN$contribution)
+testNN$follower_count <- as.numeric(testNN$follower_count)
+testNN <- subset(testNN, select= -c(rank,level_type,region))
+testNN$bin_points <- as.numeric(testNN$bin_points)
+```
+
+```{r include=TRUE}
+maxs <- apply(testNN,2,max)
+mins <- apply(testNN,2,min)
+scaledNN <- as.data.frame(scale(testNN, center=mins, scale=maxs-mins))
+```
+
+Let's test our model:
+```{r include=TRUE, results='hide', warning=FALSE}
+pr.nn <- compute(nn, scaledNN[,2:ncol(scaledNN)])
+pr.nn2 <- pr.nn$net.result*(max(testNN$attempts_range)-min(testNN$attempts_range))+min(testNN$attempts_range)
+pr.nn2 <- round(pr.nn2)
+test.r <- testNN$attempts_range
+MAE.nn <- mean(abs(test.r - pr.nn2))
+```
+
+DRUM ROLL, PLEASE!
+```{r include=TRUE}
+print(MAE.nn)
+```
+
+Fantastic!
+
+# Conclusion
+
+Recommending the right questions for a programmer to solve is a challenge for online education platforms. Nevertheless, this is essential to keep users engaged and advancing. With under 1,000 lines of code, we have been able to put together an effective model to predict how many attempts/commits a programmer will take to solve a given problem. Though our results are not 100% accurate, they are a great improvement from no predictions at all or simply guessing the number of attempts that a user might take. 
+
+Knowing this information is one of the first buidling blocks required to develop a tailored and successful recommendation engine on a thriving platform.
+
+Thank you for reading! Please let me know if you have any questions or comments. You can reach me directly by either my email at jacob.w.lyman@gmail.com or via [my Linkedin page](https://www.linkedin.com/in/jacobwlyman/).
+
+
+```{r , fig.align='center', echo=FALSE}
+knitr::include_graphics("SUU Grad Photo.png")
+```
